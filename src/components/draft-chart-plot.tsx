@@ -41,6 +41,15 @@ function readerTicks(min: number, max: number) {
 }
 const previewTickLabel = (value: number) => value !== 0 && Math.abs(value) < .001 ? value.toExponential(0).replace("e+", "e") : tickLabel(value);
 
+/** Opt-in calendar multiples inside the unchanged domain, with bounded allocation. */
+function steppedYearTicks(min: number, max: number, step?: number) {
+  if (step === undefined || !Number.isSafeInteger(step) || step <= 0) return null;
+  const first = Math.ceil(min / step) * step;
+  const count = Math.floor((max - first) / step) + 1;
+  if (!Number.isSafeInteger(count) || count < 1 || count > 100) return null;
+  return Array.from({ length: count }, (_, index) => first + index * step);
+}
+
 function ObservationMarker({ marker = "circle", cx, cy, r, ...props }: SVGAttributes<SVGElement> & {
   marker?: DraftObservation["marker"]; cx: number; cy: number; r: number;
 }) {
@@ -54,7 +63,25 @@ function ObservationMarker({ marker = "circle", cx, cy, r, ...props }: SVGAttrib
     const halfBase = Math.sqrt(3) * r / 2;
     return <polygon points={`${cx},${cy - r} ${cx + halfBase},${cy + r / 2} ${cx - halfBase},${cy + r / 2}`} {...props} />;
   }
+  if (marker === "diamond") {
+    return <polygon points={`${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`} {...props} />;
+  }
   return <circle cx={cx} cy={cy} r={r} {...props} />;
+}
+
+function CalculationSource({ source }: { source?: DraftObservation["calculationSource"] }) {
+  return source ? <p data-calculation-source>Calculation source: <a href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a></p> : null;
+}
+
+function CandidateSources({ sources }: { sources?: DraftObservation["candidateSources"] }) {
+  if (!sources?.length) return null;
+  return <div data-candidate-sources>
+    <p><strong>Candidate sources · assignment unconfirmed</strong></p>
+    <ul>{sources.map(source => <li key={source.url}>
+      <a href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>
+      <p>{source.note}</p>
+    </li>)}</ul>
+  </div>;
 }
 
 function wrapLabel(label: string, width: number) {
@@ -99,6 +126,10 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
     const point = plot.points.find(point => (point.group ?? "Other observations") === group);
     return { label: group, color: groupColor(point ?? { group }), marker: point?.marker };
   }) : []);
+  const referenceTrendline = plot.referenceTrendline;
+  const exportLegend = referenceTrendline
+    ? [...legend, { label: referenceTrendline.label, color: referenceTrendline.color, marker: "line" as const }]
+    : legend;
   const tooltip = usePointTooltip(plot.points);
   const active = tooltip.active;
   const qualifiedValue = (point: DraftObservation) => `${point.qualifier ?? ""}${exactNumber(plot.valueSignificantDigits ? Number(point.y.toPrecision(plot.valueSignificantDigits)) : point.y)}`;
@@ -144,7 +175,8 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
     minPower += (targetMinPower - minPower) * benchmarkProgress;
     maxPower += (targetMaxPower - maxPower) * benchmarkProgress;
   }
-  const xTicks = preview && numericX ? readerTicks(xMin, xMax) : [...new Set([xMin, numericX ? (xMin + xMax) / 2 : Math.round((xMin + xMax) / 2), xMax])];
+  const xTicks = (!numericX ? steppedYearTicks(xMin, xMax, plot.yearTickStep) : null)
+    ?? (preview && numericX ? readerTicks(xMin, xMax) : [...new Set([xMin, numericX ? (xMin + xMax) / 2 : Math.round((xMin + xMax) / 2), xMax])]);
   const connections = numericX ? [] : (plot.connections ?? []).map(series => ({
     ...series,
     points: series.pointIds.map(id => plot.points.find(point => point.id === id)).filter((point): point is DraftObservation => !!point).sort((a, b) => a.x - b.x),
@@ -228,8 +260,13 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
   return <figure ref={figure} className="draft-plot" data-draft-preview={preview || undefined} data-brain-scale-state={benchmark ? benchmarkMoving ? "animating" : benchmarkEnabled ? "on" : "off" : undefined} aria-labelledby={`${id}-title`}>
     {!preview && shareAnchor && <ChartActions anchor={shareAnchor} title={plot.title}><ChartShare anchor={shareAnchor} title={plot.title} disabled={benchmarkMoving} getChart={() => ({
       svg: figure.current!.querySelector("svg")!, title: plot.title, anchor: shareAnchor,
-      legend,
+      legend: exportLegend,
+      pointKey: plot.exportPointKey ? annotations.map(({ point, text }, index) => ({
+        label: `${index + 1}. ${point.exportAnnotation ?? text}`, color: groupColor(point), marker: point.marker,
+      })) : undefined,
+      pointKeyNote: plot.exportPointKey ? plot.exportPointKeyNote : undefined,
       notes: [plot.scope, plot.seriesNote ?? "",
+        ...(referenceTrendline ? [referenceTrendline.note] : []),
         ...(benchmarkEnabled && benchmark ? [benchmark.disclosure, ...benchmark.sources.map(source => `${source.title}: ${source.url}`)] : []),
         ...(energyAxis ? [energyAxis.note] : []),
         ...(overlapNote ? [overlapNote] : []),
@@ -262,6 +299,12 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
       {energyAxis && <text id={`${id}-axis-break`} className="draft-plot-break-note" data-x-axis-break-note x={0} y={baseHeight + 16}>
         {breakNote.map((line, index) => <tspan key={index} x={0} dy={index ? 16 : 0}>{line}{index < breakNote.length - 1 ? " " : ""}</tspan>)}
       </text>}
+      {referenceTrendline && <polyline data-reference-trendline={plot.id}
+        points={referenceTrendline.points.map(point => `${x(point.x)},${y(point.y)}`).join(" ")}
+        fill="none" stroke={referenceTrendline.color} strokeWidth={2} vectorEffect="non-scaling-stroke"
+        data-export-stroke-width={2} pointerEvents="none" aria-label={referenceTrendline.label}>
+        <title>{referenceTrendline.note}</title>
+      </polyline>}
       {!preview && annotations.map(({ point, x: labelX, y: labelY }) => <line key={point.id} className="draft-annotation-leader" data-annotation-leader={point.id}
         x1={x(point.x)} y1={y(point.y)} x2={labelX} y2={labelY} stroke={groupColor(point)} aria-hidden="true" />)}
       {!preview && annotations.map(({ point, x: labelX, y: labelY }, index) => <g key={point.id} className="draft-annotation-key" data-annotation-key={point.id} aria-hidden="true">
@@ -311,6 +354,12 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
         <ObservationMarker marker={entry.marker} cx={7} cy={7} r={6} fill={entry.color} />
       </svg> : "●"}</span> {entry.label}
     </li>)}</ul>}
+    {referenceTrendline && <p className="draft-plot-qualifications" data-reference-trendline-key title={referenceTrendline.note}>
+      <svg width={22} height={12} viewBox="0 0 22 12" aria-hidden="true" style={{ display: "inline-block", verticalAlign: "middle", marginRight: 4 }}>
+        <line x1={0} x2={22} y1={6} y2={6} stroke={referenceTrendline.color} strokeWidth={2} />
+      </svg>{referenceTrendline.label}
+      {referenceTrendline.methodologyUrl && <> · <a data-fit-methodology href={referenceTrendline.methodologyUrl} target="_blank" rel="noreferrer">Data and fit code ↗</a></>}
+    </p>}
     {plot.points.some(point => point.qualifier) && <p className="draft-plot-qualifications" data-visible-qualifications>
       {plot.points.every(point => point.qualifier === "≈") ? "All plotted values are approximate (≈)." : <>
         <span>{plot.yLabel}: </span>
@@ -327,18 +376,21 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
         {active.group && <p>{active.group}</p>}
         <p>{active.dateLabel}{numericX && ` · ${plot.xLabel}: ${exactNumber(active.x)}`}</p>
         <p>{plot.yLabel}: <strong>{qualifiedValue(active)}</strong></p>
-        <a href={active.sourceUrl} target="_blank" rel="noreferrer">{active.sourceTitle} ↗</a>
+        {active.sourceUrl ? <a href={active.sourceUrl} target="_blank" rel="noreferrer">{active.sourceTitle} ↗</a> : <span>{active.sourceTitle}</span>}
         {active.note && <p>{active.note}</p>}
+        <CandidateSources sources={active.candidateSources} />
+        <CalculationSource source={active.calculationSource} />
       </> : null}
     </PointTooltip>
     <ModalSources modalOnly>
       <p className="mx-scope-line" data-draft-sources-scope>{plot.scope}</p>
-      <ul className="pc-sources">{[...new Map(plot.points.map(point => [point.sourceUrl, point.sourceTitle])).entries()].map(([url, title]) => <li key={url}><a href={url} target="_blank" rel="noreferrer">{title} ↗</a></li>)}</ul>
+      <ul className="pc-sources">{[...new Map(plot.points.flatMap(point => point.sourceUrl ? [[point.sourceUrl, point.sourceTitle] as const] : [])).entries()].map(([url, title]) => <li key={url}><a href={url} target="_blank" rel="noreferrer">{title} ↗</a></li>)}</ul>
     </ModalSources>
     <ModalData><details className="draft-plot-data">
       <summary>Data and sources ({plot.points.length})</summary>
       <p className="draft-plot-scope">{plot.scope}</p>
       {plot.seriesNote && <ChartNoteList notes={[plot.seriesNote]} legend={legend} />}
+      {referenceTrendline && <p>{referenceTrendline.note}</p>}
       <div className="draft-plot-table-scroll" tabIndex={0} role="region" aria-label={`${plot.title} source table`}>
         <table>
           <caption>{plot.title} — {plot.observationBasis ?? "source-reported"} observations</caption>
@@ -347,7 +399,7 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
             <th scope="row">{point.label}{point.group && <small>{point.group}</small>}</th>
             <td>{numericX && <>{exactNumber(point.x)}<br /></>}{point.dateLabel}</td>
             <td>{qualifiedValue(point)}</td>
-            <td><a href={point.sourceUrl} target="_blank" rel="noreferrer">{point.sourceTitle} ↗</a><blockquote>{point.quote}</blockquote>{point.note && <p>{point.note}</p>}</td>
+            <td>{point.sourceUrl ? <a href={point.sourceUrl} target="_blank" rel="noreferrer">{point.sourceTitle} ↗</a> : <span>{point.sourceTitle}</span>}<blockquote>{point.quote}</blockquote>{point.note && <p>{point.note}</p>}<CandidateSources sources={point.candidateSources} /><CalculationSource source={point.calculationSource} /></td>
           </tr>)}</tbody>
         </table>
       </div>
