@@ -13,6 +13,7 @@ import { ChartYearGuides, annualYears } from "@/components/chart-year-guides";
 import { CHART_PRESENTATION } from "@/lib/chart-presentation";
 import { neuroaiEnergyAxis } from "@/lib/neuroai-energy-axis";
 import { brainBenchmarkContext } from "@/lib/connectomics-brain-benchmarks";
+import { compactCount, countWords } from "@/lib/large-count-label";
 import { useBrainScaleMotion } from "./use-brain-scale-motion";
 
 const GROUP_COLORS = ["var(--accent)", "#cd732f", "#9275ca", "#238e91", "#cb6285", "#647d3d"];
@@ -126,21 +127,22 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
     const point = plot.points.find(point => (point.group ?? "Other observations") === group);
     return { label: group, color: groupColor(point ?? { group }), marker: point?.marker };
   }) : []);
-  const referenceTrendline = plot.referenceTrendline;
-  const exportLegend = referenceTrendline
-    ? [...legend, { label: referenceTrendline.label, color: referenceTrendline.color, marker: "line" as const }]
-    : legend;
+  const referenceTrendlines = plot.referenceTrendlines ?? (plot.referenceTrendline ? [plot.referenceTrendline] : []);
+  const exportLegend = [...legend, ...referenceTrendlines.map(line => ({ label: line.label, color: line.color, marker: "line" as const }))];
   const tooltip = usePointTooltip(plot.points);
   const active = tooltip.active;
-  const qualifiedValue = (point: DraftObservation) => `${point.qualifier ?? ""}${exactNumber(plot.valueSignificantDigits ? Number(point.y.toPrecision(plot.valueSignificantDigits)) : point.y)}`;
+  const qualifiedValue = (point: DraftObservation) => `${point.qualifier ?? ""}${plot.id === "acquisition-economics" ? countWords(point.y) : exactNumber(plot.valueSignificantDigits ? Number(point.y.toPrecision(plot.valueSignificantDigits)) : point.y)}`;
   const { width, figure } = usePlotWidth();
   const previewExtra = useMetricPreviewSpace(figure, preview);
-  const yLabel = preview && plot.scale === "log" && !/\blog\b/i.test(plot.yLabel) ? `${plot.yLabel} · log` : plot.yLabel;
+  const yLabel = preview && plot.previewYLabel ? plot.previewYLabel : preview && plot.scale === "log" && !/\blog\b/i.test(plot.yLabel) ? `${plot.yLabel} · log` : plot.yLabel;
   const yTitle = wrapLabel(yLabel, width - 12);
   const xTitle = wrapLabel(plot.xLabel, width - 12);
-  const top = 28 + yTitle.length * 16;
-  const bottom = top + (preview ? 84 : 232) + previewExtra;
-  const baseHeight = bottom + 64 + (xTitle.length - 1) * 16;
+  const fittedLabels = referenceTrendlines.filter(line => line.fit);
+  const compactFit = preview && fittedLabels.length > 0;
+  const fitLabelTop = 28 + yTitle.length * 16;
+  const top = fitLabelTop + fittedLabels.length * 16 + (fittedLabels.length && benchmark ? 16 : 0);
+  const bottom = top + (compactFit ? 56 : preview ? 84 : 232) + previewExtra;
+  const baseHeight = bottom + (compactFit ? 28 : 64 + (xTitle.length - 1) * 16);
   const xs = plot.points.map(point => point.x);
   const ys = plot.points.map(point => point.y);
   const numericX = plot.xKind === "number";
@@ -182,7 +184,7 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
     points: series.pointIds.map(id => plot.points.find(point => point.id === id)).filter((point): point is DraftObservation => !!point).sort((a, b) => a.x - b.x),
   })).filter(series => series.points.length > 1);
   const connectionNote = connections.length ? `Lines connect only ${connections.map(series => series.label).join("; ")}; other observations remain separate.` : "Unconnected observations";
-  const axisLabel = preview ? previewTickLabel : tickLabel;
+  const axisLabel = plot.id === "acquisition-economics" ? compactCount : preview ? previewTickLabel : tickLabel;
   const baselineLeft = Math.max(46, ...baselineYTicks.map(tick => axisLabel(tick).length * 6.5 + 12));
   const targetLeft = Math.max(46, ...targetYTicks.map(tick => axisLabel(tick).length * 6.5 + 12));
   const left = baselineLeft + (targetLeft - baselineLeft) * benchmarkProgress;
@@ -266,7 +268,7 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
       })) : undefined,
       pointKeyNote: plot.exportPointKey ? plot.exportPointKeyNote : undefined,
       notes: [plot.scope, plot.seriesNote ?? "",
-        ...(referenceTrendline ? [referenceTrendline.note] : []),
+        ...referenceTrendlines.map(line => line.note),
         ...(benchmarkEnabled && benchmark ? [benchmark.disclosure, ...benchmark.sources.map(source => `${source.title}: ${source.url}`)] : []),
         ...(energyAxis ? [energyAxis.note] : []),
         ...(overlapNote ? [overlapNote] : []),
@@ -276,7 +278,7 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
         ...plot.points.filter(point => point.exportNote).map(point => `${point.label} · ${point.dateLabel}. ${point.exportNote}`),
         `Sources: ${[...new Set(plot.points.map(point => point.sourceTitle))].join("; ")}`],
     })} /></ChartActions>}
-    <figcaption id={`${id}-title`}>{plot.title}</figcaption>
+    <figcaption id={`${id}-title`}>{preview ? plot.previewTitle ?? plot.title : plot.title}</figcaption>
     <svg data-metric-preview-extra={preview ? previewExtra : undefined} className="draft-plot-svg" viewBox={`0 0 ${width} ${height}`} aria-labelledby={`${id}-title`} aria-describedby={energyAxis ? `${id}-axis-break` : undefined}
       data-brain-scale-progress={benchmark ? benchmarkProgress : undefined} data-brain-scale-log-min={benchmark ? minPower : undefined} data-brain-scale-log-max={benchmark ? maxPower : undefined}>
       <text className="draft-plot-axis-title" x={0} y={18}>{yTitle.map((line, index) => <tspan key={index} x={0} dy={index ? 16 : 0}>{line}{index < yTitle.length - 1 ? " " : ""}</tspan>)}</text>
@@ -295,16 +297,17 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
         </g>
       </> : <line className="draft-plot-axis" x1={left} x2={right} y1={bottom} y2={bottom} />}
       {(energyAxis?.ticks ?? xTicks).map(tick => <text className="draft-plot-tick" key={tick} x={x(tick)} y={bottom + 22} textAnchor="middle">{numericX ? axisLabel(tick) : String(tick)}</text>)}
-      <text className="draft-plot-axis-title" x={0} y={bottom + 52} textAnchor="start">{xTitle.map((line, index) => <tspan key={index} x={0} dy={index ? 16 : 0}>{line}{index < xTitle.length - 1 ? " " : ""}</tspan>)}</text>
+      {!compactFit && <text className="draft-plot-axis-title" x={0} y={bottom + 52} textAnchor="start">{xTitle.map((line, index) => <tspan key={index} x={0} dy={index ? 16 : 0}>{line}{index < xTitle.length - 1 ? " " : ""}</tspan>)}</text>}
       {energyAxis && <text id={`${id}-axis-break`} className="draft-plot-break-note" data-x-axis-break-note x={0} y={baseHeight + 16}>
         {breakNote.map((line, index) => <tspan key={index} x={0} dy={index ? 16 : 0}>{line}{index < breakNote.length - 1 ? " " : ""}</tspan>)}
       </text>}
-      {referenceTrendline && <polyline data-reference-trendline={plot.id}
+      {referenceTrendlines.map(referenceTrendline => <polyline key={referenceTrendline.id ?? plot.id} data-reference-trendline={referenceTrendline.id ?? plot.id}
         points={referenceTrendline.points.map(point => `${x(point.x)},${y(point.y)}`).join(" ")}
         fill="none" stroke={referenceTrendline.color} strokeWidth={2} vectorEffect="non-scaling-stroke"
         data-export-stroke-width={2} pointerEvents="none" aria-label={referenceTrendline.label}>
         <title>{referenceTrendline.note}</title>
-      </polyline>}
+      </polyline>)}
+      {fittedLabels.map((line, index) => <text key={line.id} data-fit-direct-label={line.id} x={0} y={fitLabelTop + index * 16 - 4} textAnchor="start" fill={line.color} stroke="var(--surface)" strokeWidth={3} paintOrder="stroke" fontSize={CHART_PRESENTATION.labelFontSize} data-export-font-size={CHART_PRESENTATION.labelFontSize}>{line.directLabel ?? line.label}</text>)}
       {!preview && annotations.map(({ point, x: labelX, y: labelY }) => <line key={point.id} className="draft-annotation-leader" data-annotation-leader={point.id}
         x1={x(point.x)} y1={y(point.y)} x2={labelX} y2={labelY} stroke={groupColor(point)} aria-hidden="true" />)}
       {!preview && annotations.map(({ point, x: labelX, y: labelY }, index) => <g key={point.id} className="draft-annotation-key" data-annotation-key={point.id} aria-hidden="true">
@@ -330,6 +333,7 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
         {...(!preview ? inspectProps(point) : {})}
       />)}
     </svg>
+    {!preview && plot.id === "acquisition-economics" && <p className="draft-plot-qualifications">M = million · B = billion · T = trillion · Q = quadrillion</p>}
     {benchmark && <div className="brain-scale-controls">
       <button type="button" role="switch" data-brain-scale-toggle aria-checked={benchmarkEnabled}
         onClick={() => { tooltip.clear(); setBenchmarkEnabled(enabled => !enabled); }}><span className="brain-scale-switch" aria-hidden="true" />{benchmark.toggleLabel}</button>
@@ -354,12 +358,12 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
         <ObservationMarker marker={entry.marker} cx={7} cy={7} r={6} fill={entry.color} />
       </svg> : "●"}</span> {entry.label}
     </li>)}</ul>}
-    {referenceTrendline && <p className="draft-plot-qualifications" data-reference-trendline-key title={referenceTrendline.note}>
+    {referenceTrendlines.map(referenceTrendline => <p key={referenceTrendline.id ?? plot.id} className="draft-plot-qualifications" data-reference-trendline-key title={referenceTrendline.note}>
       <svg width={22} height={12} viewBox="0 0 22 12" aria-hidden="true" style={{ display: "inline-block", verticalAlign: "middle", marginRight: 4 }}>
         <line x1={0} x2={22} y1={6} y2={6} stroke={referenceTrendline.color} strokeWidth={2} />
       </svg>{referenceTrendline.label}
-      {referenceTrendline.methodologyUrl && <> · <a data-fit-methodology href={referenceTrendline.methodologyUrl} target="_blank" rel="noreferrer">Data and fit code ↗</a></>}
-    </p>}
+      {referenceTrendline.methodologyUrl && <> · <a data-fit-methodology href={referenceTrendline.methodologyUrl} target="_blank" rel="noreferrer">{referenceTrendline.methodologyLabel ?? "Data and fit code ↗"}</a></>}
+    </p>)}
     {plot.points.some(point => point.qualifier) && <p className="draft-plot-qualifications" data-visible-qualifications>
       {plot.points.every(point => point.qualifier === "≈") ? "All plotted values are approximate (≈)." : <>
         <span>{plot.yLabel}: </span>
@@ -368,6 +372,7 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
         </span>)}
       </>}
     </p>}
+    {plot.id === "acquisition-economics" && <p className="draft-plot-qualifications">PEEM: prospective. ExA-SPIM 2024: author estimate; citation mismatch (HiExM).</p>}
     {preview && overlapNote && <p className="draft-plot-overlap-note" data-overlap-note>{overlapNote}</p>}
     {!preview && <p className="draft-plot-legend"><span aria-hidden="true">●</span> {observationBasis} · {scaleNote} · {connectionNote}</p>}
     {!preview && <><PointTooltip {...tooltip.tooltipProps}>
@@ -389,8 +394,9 @@ export function DraftChartPlot({ plot, shareAnchor, preview = false }: { plot: D
     <ModalData><details className="draft-plot-data">
       <summary>Data and sources ({plot.points.length})</summary>
       <p className="draft-plot-scope">{plot.scope}</p>
+      {plot.referenceTrendlines && <a data-selected-plot-json download={`neuro-atlas-${plot.id}.json`} href={`data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(plot,null,2))}`}>Download selected data &amp; fits JSON</a>}
       {plot.seriesNote && <ChartNoteList notes={[plot.seriesNote]} legend={legend} />}
-      {referenceTrendline && <p>{referenceTrendline.note}</p>}
+      {referenceTrendlines.map(line => <p key={line.id ?? plot.id}>{line.note}</p>)}
       <div className="draft-plot-table-scroll" tabIndex={0} role="region" aria-label={`${plot.title} source table`}>
         <table>
           <caption>{plot.title} — {plot.observationBasis ?? "source-reported"} observations</caption>

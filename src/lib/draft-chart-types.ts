@@ -1,3 +1,6 @@
+import type { HistoricalLogFit } from "./historical-log-fit";
+export type DraftTrendline = { id?: string; label: string; color: string; note: string; methodologyUrl?: string; methodologyLabel?: string; directLabel?: string; points: { x: number; y: number }[]; fit?: HistoricalLogFit };
+
 /** A reported, derived or reconstructed observation with explicit qualifiers and scope. */
 export type DraftObservation = {
   id: string;
@@ -31,6 +34,9 @@ export type DraftObservation = {
 export type DraftPlot = {
   id: string;
   title: string;
+  /** Concise card labels; full chart, exports and link identity retain title/units. */
+  previewTitle?: string;
+  previewYLabel?: string;
   xLabel: string;
   yLabel: string;
   scale: "linear" | "log";
@@ -45,7 +51,9 @@ export type DraftPlot = {
   yearTickStep?: number;
   seriesNote?: string;
   /** Descriptive fitted or traced trend, separate from observations and study connections. */
-  referenceTrendline?: { label: string; color: string; note: string; methodologyUrl?: string; points: { x: number; y: number }[] };
+  referenceTrendline?: DraftTrendline;
+  /** Multiple independent method fits; the legacy single line remains supported. */
+  referenceTrendlines?: DraftTrendline[];
   /** Explicit source-supported identities only; never infer a path from color/category. */
   connections?: { id: string; label: string; pointIds: string[] }[];
   /** Optional evidence basis; default preserves source-reported charts. */
