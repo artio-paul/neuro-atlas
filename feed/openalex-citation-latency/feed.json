@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "csv": "# generated: 2026-11-17T18:00:29+00:00\n# source: OpenAlex (https://openalex.org, CC0)\n# query: brain-computer interface|connectome|neural implant|whole brain emulation\n# from_year: 2000\n# reliable_cutoff_year: 2024\n# sample: works_per_year=80; max_refs_per_work=50; cluster=title_and_abstract.search; ci=cluster_bootstrap(resample=works,iters=500,seed=42); note=first_time_authors intentionally blank (needs per-author history)\nyear,field_works,all_works,corpus_share_per_100k,first_time_authors,idea_vintage_median_years,vintage_ci_lo,vintage_ci_hi,n_refs_sampled,n_works_sampled,reliable\n2000,272,3382692,8.041,,6.0,5.5,7,1250,53,1\n2001,271,3588437,7.552,,6,6,8.0,1617,58,1\n2002,411,4177267,9.839,,6,5.0,7,1507,68,1\n2003,459,4409440,10.409,,6.0,5,7.0,1318,63,1\n2004,567,4749740,11.937,,5,5.0,6.0,1225,49,1\n2005,776,5145586,15.081,,6.0,5.0,6,1160,58,1\n2006,805,5589858,14.401,,6,5,7,1657,64,1\n2007,1051,6054428,17.359,,5.0,5.0,6.0,1494,58,1\n2008,1188,6454148,18.407,,6.0,5.0,7,1292,50,1\n2009,1459,6980058,20.902,,6.0,5.0,7.0,1622,60,1\n2010,1569,7445609,21.073,,6,5.0,7,1685,62,1\n2011,1827,7950427,22.98,,6.0,5.0,6,1696,65,1\n2012,1962,8257771,23.759,,6,5,7,1505,55,1\n2013,2554,8646636,29.537,,6,5,6.0,1427,56,1\n2014,2656,9135452,29.074,,7.0,6.0,8,1720,57,1\n2015,2893,9349958,30.941,,7.0,6.0,8.0,1826,69,1\n2016,3430,9778846,35.076,,6,5.0,8,1443,49,1\n2017,3431,9660828,35.515,,7.0,6.0,8.0,1666,56,1\n2018,3875,9619421,40.283,,8.0,7.0,8.0,1886,57,1\n2019,4047,10108929,40.034,,8.0,7,9.0,2204,67,1\n2020,4363,10710227,40.737,,7.0,7,8,2510,69,1\n2021,4861,10257354,47.39,,9.0,8.0,9,2382,67,1\n2022,5050,9930832,50.852,,9.0,8.0,10.0,2146,60,1\n2023,5405,10693671,50.544,,9.0,8,11,2216,63,1\n2024,6176,11003303,56.129,,7,6.0,8.0,2205,67,0\n2025,8097,14226691,56.914,,8,7.0,10.0,2027,58,0\n2026,9911,18817362,52.669,,11,8,12.0,2033,51,0\n",
+  "provenance": {
+    "version": 1,
+    "method": "openalex-neurotech-reference-age-v1",
+    "sourceRevision": "0d91734795f7a62394d2047a8f95384bbeae41f4",
+    "generatorBlob": "87a4e15fa4f957ca980a056d949b72cfc353b615",
+    "directionBlob": "a63c91f2a196f8a542e9341f30eefcaeefe2ccec",
+    "settings": {
+      "query": "brain-computer interface|connectome|neural implant|whole brain emulation",
+      "fromYear": 2000,
+      "through": "acquisition-year",
+      "worksPerYear": 80,
+      "maxRefsPerWork": 50,
+      "sampleSeed": 42,
+      "batchSize": 50,
+      "clusterIterations": 500,
+      "clusterSeed": 42,
+      "referenceFromYear": 1900,
+      "referenceThrough": "publication-year",
+      "reliableRule": "year < acquisition-year - 2"
+    },
+    "startedAt": "2026-11-17T17:49:41+00:00",
+    "finishedAt": "2026-11-17T18:00:29+00:00",
+    "generatedAt": "2026-11-17T18:00:29+00:00",
+    "manifestSha256": "a5bbd86a24c7e07ae3fd80d64a50f05c5a0b8c4f3850622e9767dc33543b733e",
+    "csvSha256": "de6fb924d37fc6edf78b5a20a23e13997c4e1de010248b33724a782a7621794a",
+    "receiptCount": 1001,
+    "complete": true
+  }
+}
